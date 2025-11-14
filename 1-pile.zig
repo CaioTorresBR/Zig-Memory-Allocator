@@ -45,11 +45,36 @@ const AllocateurPile = struct {
         // par la suite, `self.buffer` et `self.next` désignent les deux
         // champs de l’allocateur
 
-        // (SUPPRIMER LES LIGNES SUIVANTES ET COMPLÉTER!)
-        _ = self;
-        _ = len;
-        _ = alignment;
-        return null;
+        // obtient le pointeur vers l'address actuel 
+        // self.buffer.ptr = pointeur qui pointe à l'addresse de début du buffer
+        // self.next = pointe à la prochaine case disponible pour des allocations dans le buffer
+        const current_addr = self.buffer.ptr + self.next;
+
+        // l'index où on est en bytes dans le buffer (taille relative)
+        var idx = @intFromPtr(current_addr) - @intFromPtr(self.buffer.ptr);
+
+        // on voit la possibilité de faire une nouvelle allocation en comparant
+        // la taille du buffer avec la position actuelle plus la taille des bytes qu'on veut allouer
+        if (idx + len > self.buffer.len ) { // si la taille de ce qu'on veut allouer est trop grad, on ne fait rien
+            return null;
+        }
+
+        // transforme l'alignement (enum ex: 2^0, 2^1, 2^2...) en entier et après en usize pour qu'on puisse réaliser des opérations avec idx (usize)
+        const int_alignment = @as(usize, 1) << @intFromEnum(alignment);
+        // on réalise l'alignement : si index n'est pas multiple de l'alignement,
+        // on met à jour l'index pour qu'il devient un multiple
+        if (idx % int_alignment != 0) {
+            idx += int_alignment - (idx % int_alignment);
+        }
+
+        // le pointeur aligné devient l'index courant + le pointeur qui pointe au
+        // début du buffer
+        const ptr_aligned = self.buffer.ptr + idx;
+
+        self.next = idx + len;
+
+        // retourne un pointeur vers l'addresse où l'allocation doit être faite
+        return ptr_aligned; 
     }
 };
 
