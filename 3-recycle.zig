@@ -52,6 +52,33 @@ const AllocateurRecycle = struct {
         // par la suite, `self.buffer` et `self.next` désignent les deux
         // champs de l’allocateur
 
+        // indique le début du bloc pour faire les parcours
+        var debut_bloc = self.buffer.ptr;
+
+        // indique le header du bloc
+        var header = getHeader(debut_bloc);
+
+        // calcule taille total du bloc (header + taille allocation)
+        var taille_totale_bloc = @sizeOf(header) + header.len;
+
+        // indique l'addresse du prochain bloc
+        var prochain_bloc = taille_totale_bloc + header;
+
+        // pour faire une allocation de recyclage on vérifie si:
+        // la taille du bloc à etre recyclé est plus grande que ce qu'on veut allouer
+        // et si le bloc é libre (free == true)
+        if ((taille_totale_bloc > len) or (header.free == false) ){
+            return null;
+        }
+        
+        // on met à jour la disponibilité du bloc d'espace dans le buffer
+        header.free = false;
+        
+
+        
+
+
+
         // (SUPPRIMER LES LIGNES SUIVANTES ET COMPLÉTER!)
         _ = self;
         _ = len;
