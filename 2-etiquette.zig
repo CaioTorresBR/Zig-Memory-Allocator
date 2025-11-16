@@ -49,20 +49,51 @@ const AllocateurEtiquette = struct {
         // récupère un pointeur vers l’instance de notre allocateur
         const self: *AllocateurEtiquette = @ptrCast(@alignCast(ctx));
 
+        const header_size = @sizeOf(Header);
+        const buff_len = self.buffer.len;
+
         // par la suite, `self.buffer` et `self.next` désignent les deux
         // champs de l’allocateur
+        // Le plus grand alignement entre header et données
+        const user_align = alignment.toByteUnits();
+        const header_align = header_alignment.toByteUnits();
+        const required_align: usize =
+            if (user_align > header_align) user_align else header_align;
 
-        // (SUPPRIMER LES LIGNES SUIVANTES ET COMPLÉTER!)
-        _ = self;
-        _ = len;
-        _ = alignment;
-        return null;
+        // On calcule où les données doivent commencer
+        const aligned_data_index = std.mem.alignForward(usize, self.next + header_size, required_align);
+       
+       
+       // L'adresse exacte du header
+        const header_index = aligned_data_index - header_size;
+        
+        // L'adresse de début des données allouées.
+        const data_index = aligned_data_index;
+
+        // Vérifier si la taille est suffit dans le buffer
+        if (data_index + len > buff_len)
+            return null;
+
+        // Header
+        const header_bytes_ptr: [*]u8 = self.buffer.ptr + header_index;
+        const header_ptr: *Header = @ptrCast(@alignCast(header_bytes_ptr));
+
+        header_ptr.* = Header{ .len = len, .free = false };
+
+        // Mise a jour le prochaine index libre
+        self.next = data_index + len;
+
+        // Retourne le ptr au débur des données
+        return self.buffer.ptr + data_index;
     }
 
     /// Récupère l’en-tête associé à l’allocation débutant à l’adresse `ptr`.
     fn getHeader(ptr: [*]u8) *Header {
-        // (SUPPRIMER LES LIGNES SUIVANTES ET COMPLÉTER!)
-        return @ptrCast(@alignCast(ptr));
+        // On recule de sizeof(Header) octets.
+        const header_bytes_ptr = ptr - @sizeOf(Header);
+
+        // // On convertit vers un pointeur sur Header avec alignement correct
+        return @ptrCast(@alignCast(header_bytes_ptr));
     }
 
     /// Marque un bloc de mémoire précédemment alloué comme étant libre.
@@ -78,8 +109,19 @@ const AllocateurEtiquette = struct {
         _ = alignment;
         _ = return_address;
 
-        // (SUPPRIMER LES LIGNES SUIVANTES ET COMPLÉTER!)
-        _ = buf;
+
+        // Si c'est vide il n'a pas une header
+        if (buf.len == 0)
+            return;
+
+        // Poiteur vers les données
+        const data_ptr: [*]u8 = buf.ptr;
+
+        // Lire le Header associé
+        const header = AllocateurEtiquette.getHeader(data_ptr);
+       
+       // Marque le bloc comme libéré
+        header.free = true;
     }
 };
 
