@@ -52,38 +52,48 @@ const AllocateurRecycle = struct {
         // par la suite, `self.buffer` et `self.next` désignent les deux
         // champs de l’allocateur
 
-        // indique le début du bloc pour faire les parcours
-        var debut_bloc = self.buffer.ptr;
+        // pointeur que pointe au début du buffer
+        var marqueur = self.buffer.ptr;
 
-        // indique le header du bloc
-        var header = getHeader(debut_bloc);
+        // traverse le buffer en cherchant un bloc récyclable
+        while (marqueur < self.buffer.ptr + self.next) {
+            
+        // header du bloc
+        var header_ptr = getHeader(marqueur);
+        var header = header_ptr.*;
 
-        // calcule taille total du bloc (header + taille allocation)
-        var taille_totale_bloc = @sizeOf(header) + header.len;
 
-        // indique l'addresse du prochain bloc
-        var prochain_bloc = taille_totale_bloc + header;
+           // pour faire une allocation de recyclage on vérifie si:
+            // la taille du bloc à etre recyclé est plus grande que ce qu'on veut allouer
+            // et si le bloc é libre (free == true)
+            if ((header.len >= len) and (header.free == true) ){
+                // on met à jour la disponibilité du bloc d'espace dans le buffer
+                header_ptr.free = false;
+                // retourne l'address de début du nouveau bloc alloué (après le header)
+                const nouveau_bloc = marqueur + @sizeOf(Header);
+                return nouveau_bloc;
 
-        // pour faire une allocation de recyclage on vérifie si:
-        // la taille du bloc à etre recyclé est plus grande que ce qu'on veut allouer
-        // et si le bloc é libre (free == true)
-        if ((taille_totale_bloc > len) or (header.free == false) ){
-            return null;
-        }
-        
-        // on met à jour la disponibilité du bloc d'espace dans le buffer
+            }
+
+            // passe au prochain bloc
+            marqueur = marqueur + @sizeOf(Header) + header.len;
+        } 
+
+        // si on ne trouve pas de bloc réutilisable, on va allouer à la fin du buffer:
+
+        const position_fin = self.buffer.ptr + self.next;
+        // on met à jour les infos du header
+        const addresse_header = position_fin;  // nouveau header va se localiser à la fin
+        // met à jour le header du bloc
+        const header_ptr = getHeader(position_fin);
+        var header = header_ptr.*;
         header.free = false;
-        
-
-        
-
-
-
-        // (SUPPRIMER LES LIGNES SUIVANTES ET COMPLÉTER!)
-        _ = self;
-        _ = len;
-        _ = alignment;
-        return null;
+        header.len = len;
+        const nouveau_bloc = addresse_header + @sizeOf(Header); // addresse du nouveau bloc
+        // calcule taille total du bloc (header + taille allocation)
+        const taille_totale_bloc = @sizeOf(Header) + header.len;
+        self.next = self.next + taille_totale_bloc; // mise à jour du self.next
+        return nouveau_bloc;  
     }
 
     /// Récupère l’en-tête associé à l’allocation débutant à l’adresse `ptr`.
