@@ -52,27 +52,48 @@ const AllocateurRecycle = struct {
         // par la suite, `self.buffer` et `self.next` désignent les deux
         // champs de l’allocateur
 
+        //  trouver on bloc recyclable:
+
+        // valeur de l'alignement
+        const int_alignment = @as(usize, 1) << @intFromEnum(alignment);
+        const int_header_alignment = @as(usize, 1) << @intFromEnum(header_alignment);
+
         // pointeur que pointe au début du buffer
         var marqueur = self.buffer.ptr;
 
         // traverse le buffer en cherchant un bloc récyclable
-        while (marqueur < self.buffer.ptr + self.next) {
+        while (@intFromPtr(marqueur) < @intFromPtr(self.buffer.ptr) + self.next) {
             
-        // header du bloc
-        var header_ptr = getHeader(marqueur);
-        var header = header_ptr.*;
+            const int_marqueur = @intFromPtr(marqueur);
 
+            // aligne le marquer avant de lire le header
+            if (int_marqueur % int_header_alignment != 0) {
+                // le restant qui manque pour arriver au prochain addresse aligné
+                const deplacement  = int_header_alignment - (int_marqueur % int_header_alignment);
+                marqueur += deplacement;
 
-           // pour faire une allocation de recyclage on vérifie si:
+                // verifie si on est encore dans le buffer utilisé
+                if (@intFromPtr(marqueur) >= @intFromPtr(self.buffer.ptr) + self.next){
+                    break;
+                }
+            }
+
+            // lit le header du bloc
+            const header_ptr: *Header = @ptrCast(@alignCast(marqueur));
+            const header = header_ptr.*;
+
+           // pour faire une allocation de recyclage on vérifie si
             // la taille du bloc à etre recyclé est plus grande que ce qu'on veut allouer
             // et si le bloc é libre (free == true)
             if ((header.len >= len) and (header.free == true) ){
-                // on met à jour la disponibilité du bloc d'espace dans le buffer
-                header_ptr.free = false;
-                // retourne l'address de début du nouveau bloc alloué (après le header)
-                const nouveau_bloc = marqueur + @sizeOf(Header);
-                return nouveau_bloc;
-
+                const debut_donnees = marqueur + @sizeOf(Header);
+                // vérifie si données sont bien alignés
+                if (@intFromPtr(debut_donnees) % int_alignment == 0) {
+                    // on met à jour la disponibilité du bloc d'espace dans le buffer
+                    header_ptr.*.free = false;
+                    // retourne l'address de début du nouveau bloc alloué (après le header)
+                    return debut_donnees;
+                }
             }
 
             // passe au prochain bloc
@@ -81,25 +102,52 @@ const AllocateurRecycle = struct {
 
         // si on ne trouve pas de bloc réutilisable, on va allouer à la fin du buffer:
 
-        const position_fin = self.buffer.ptr + self.next;
-        // on met à jour les infos du header
-        const addresse_header = position_fin;  // nouveau header va se localiser à la fin
-        // met à jour le header du bloc
-        const header_ptr = getHeader(position_fin);
-        var header = header_ptr.*;
-        header.free = false;
-        header.len = len;
-        const nouveau_bloc = addresse_header + @sizeOf(Header); // addresse du nouveau bloc
-        // calcule taille total du bloc (header + taille allocation)
-        const taille_totale_bloc = @sizeOf(Header) + header.len;
-        self.next = self.next + taille_totale_bloc; // mise à jour du self.next
-        return nouveau_bloc;  
+        // fait l'alignement nécessaire
+        const reste_header = self.next % int_header_alignment;
+        if (reste_header != 0) {
+            self.next += int_header_alignment - reste_header; // met à jour le next aligné
+        }
+
+        // position header
+        const position_header = self.buffer.ptr + self.next;
+        // calcule position des données (après header)
+        const position_donnees_sans_pad = position_header + @sizeOf(Header);
+        const int_position_donnees_sans_pad = @intFromPtr(position_donnees_sans_pad);
+
+        // ajoute du padding pour aligner les données si cest necessaire
+        var padding: usize = 0;
+        const reste_donnees = int_position_donnees_sans_pad % int_alignment;
+        if (reste_donnees != 0){
+            padding = int_alignment - reste_donnees;
+        }
+
+        // vérifie s'il y a encore de l'espace dans le buffer pour une nouvelle allocation à la fin
+        const espace_necessaire = @sizeOf(Header) + padding + len;
+        if (self.next + espace_necessaire > self.buffer.len){
+            return null;
+        }
+
+        // crée un nouveau header:
+        const header_ptr: *Header = @ptrCast(@alignCast(position_header));
+        header_ptr.* = .{
+            .len = padding + len,
+            .free = false,
+        };
+
+        // pointe au données alloués
+        const donnees_ptr = position_donnees_sans_pad + padding;
+        self.next += espace_necessaire; // mise à jour du self.next
+
+        return donnees_ptr;  
     }
 
     /// Récupère l’en-tête associé à l’allocation débutant à l’adresse `ptr`.
     fn getHeader(ptr: [*]u8) *Header {
-        // (SUPPRIMER LES LIGNES SUIVANTES ET COMPLÉTER!)
-        return @ptrCast(@alignCast(ptr));
+        // On recule de sizeof(Header) octets.
+        const header_bytes_ptr = ptr - @sizeOf(Header);
+
+        // On convertit vers un pointeur sur Header avec alignement correct
+        return @ptrCast(@alignCast(header_bytes_ptr));
     }
 
     /// Marque un bloc de mémoire précédemment alloué comme étant libre.
@@ -115,8 +163,18 @@ const AllocateurRecycle = struct {
         _ = alignment;
         _ = return_address;
 
-        // (SUPPRIMER LES LIGNES SUIVANTES ET COMPLÉTER!)
-        _ = buf;
+        // Si c'est vide il n'a pas une header
+        if (buf.len == 0)
+            return;
+
+        // Poiteur vers les données
+        const data_ptr: [*]u8 = buf.ptr;
+
+        // Lire le Header associé
+        const header = AllocateurRecycle.getHeader(data_ptr);
+       
+       // Marque le bloc comme libéré
+        header.free = true;
     }
 };
 
